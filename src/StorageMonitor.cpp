@@ -9,7 +9,7 @@ StorageMonitor::StorageMonitor() : first_reading_(true) {
     // Open /proc/diskstats for reading
     diskstats_file_.open("/proc/diskstats");
     if (!diskstats_file_.is_open()) {
-        std::cerr << "Failed to open /proc/diskstats" << std::endl;
+        std::cerr << "Failed to open /proc/diskstats (Linux only)" << std::endl;
         return;
     }
     

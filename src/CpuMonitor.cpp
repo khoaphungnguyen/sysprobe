@@ -105,19 +105,17 @@ void CpuMonitor::printStats() {
     std::cout << "\n=== CPU Statistics ===" << std::endl;
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "User:   " << std::setw(6) << current_.user_percent << "%" << std::endl;
-    //std::cout << "Nice:   " << std::setw(6) << current_.nice_percent << "%" << std::endl;
+    std::cout << "Nice:   " << std::setw(6) << current_.nice_percent << "%" << std::endl;
     std::cout << "System: " << std::setw(6) << current_.system_percent << "%" << std::endl;
     std::cout << "Idle:   " << std::setw(6) << current_.idle_percent << "%" << std::endl;
     std::cout << "IOWait: " << std::setw(6) << current_.iowait_percent << "%" << std::endl;
     std::cout << "IRQ:    " << std::setw(6) << current_.irq_percent << "%" << std::endl;
     std::cout << "SoftIRQ:" << std::setw(6) << current_.softirq_percent << "%" << std::endl;
-    //std::cout << "Steal:  " << std::setw(6) << current_.steal_percent << "%" << std::endl;
-    //std::cout << "Guest:  " << std::setw(6) << current_.guest_percent << "%" << std::endl;
-    //std::cout << "GuestNice:" << std::setw(4) << current_.guest_nice_percent << "%" << std::endl;
 }
 
 void CpuMonitor::printInterruptStats() {
-    std::cout << "\n=== Interrupt Analysis ===" << std::endl;
+    std::cout << "🔍 INTERRUPT ANALYSIS" << std::endl;
+    std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
     
     // Collect and analyze all interrupts
     std::vector<std::tuple<std::string, unsigned long, unsigned long, size_t, double>> irq_analysis;
@@ -169,47 +167,58 @@ void CpuMonitor::printInterruptStats() {
                   return total_a > total_b;
               });
     
-    // Show only the most critical interrupts (top 10)
-    std::cout << "Critical Interrupts (Top 10):" << std::endl;
-    for (size_t i = 0; i < std::min(irq_analysis.size(), size_t(10)); i++) {
+    // Show only critical interrupts (storms and high activity)
+    int critical_count = 0;
+    for (size_t i = 0; i < irq_analysis.size() && critical_count < 3; i++) {
         const auto& [irq_name, total, max_count, max_cpu, balance] = irq_analysis[i];
         
-        std::string status;
-        if (balance > 0.8) {
-            status = "🔴 STORM";
-        } else if (balance > 0.5) {
-            status = "🟡 UNBALANCED";
-        } else {
-            status = "🟢 BALANCED";
+        // Only show storms or very high activity interrupts
+        if (balance > 0.8 || total > 100000) {
+            std::string status;
+            if (balance > 0.8) {
+                status = "🔴 STORM";
+            } else if (balance > 0.5) {
+                status = "🟡 UNBALANCED";
+            } else {
+                status = "🟢 HIGH ACTIVITY";
+            }
+            
+            // Get interrupt description
+            std::string description = getInterruptDescription(irq_name);
+            
+            std::cout << "IRQ " << irq_name << ": " << std::to_string(total) << " interrupts";
+            if (!description.empty()) {
+                std::cout << " (" << description << ")";
+            }
+            std::cout << " - " << status << std::endl;
+            critical_count++;
         }
-        
-        std::cout << std::left << std::setw(8) << irq_name 
-                  << std::setw(12) << ("Total: " + std::to_string(total))
-                  << std::setw(15) << ("Max: CPU" + std::to_string(max_cpu) + "(" + std::to_string(max_count) + ")")
-                  << std::setw(20) << ("Balance: " + std::to_string((int)(balance * 100)) + "%")
-                  << status << std::endl;
     }
     
-    // Show storm summary
+    if (critical_count == 0) {
+        std::cout << "No critical interrupt issues detected" << std::endl;
+    }
+    
+    // Show storm summary only if there are issues
     int storm_count = 0;
     int unbalanced_count = 0;
-    unsigned long total_storm_interrupts = 0;
     
     for (const auto& [irq_name, total, max_count, max_cpu, balance] : irq_analysis) {
         if (balance > 0.8) {
             storm_count++;
-            total_storm_interrupts += total;
         } else if (balance > 0.5) {
             unbalanced_count++;
         }
     }
     
-    std::cout << "\nStorm Summary:" << std::endl;
-    std::cout << "  🔴 Storms: " << storm_count << " IRQs (" << total_storm_interrupts << " interrupts)" << std::endl;
-    std::cout << "  🟡 Unbalanced: " << unbalanced_count << " IRQs" << std::endl;
-    
-    if (storm_count > 0) {
-        std::cout << "  ⚠️  CRITICAL: " << storm_count << " interrupt storms detected!" << std::endl;
+    if (storm_count > 0 || unbalanced_count > 0) {
+        std::cout << std::endl;
+        if (storm_count > 0) {
+            std::cout << "⚠️  CRITICAL: " << storm_count << " interrupt storms detected!" << std::endl;
+        }
+        if (unbalanced_count > 0) {
+            std::cout << "⚠️  WARNING: " << unbalanced_count << " unbalanced interrupts" << std::endl;
+        }
     }
 }
 
@@ -245,4 +254,274 @@ bool CpuMonitor::parseProcInterrupts() {
     }
     
     return true;
+}
+
+std::string CpuMonitor::getInterruptDescription(const std::string& irq_name) const {
+    // Common interrupt mappings
+    static const std::map<std::string, std::string> interrupt_descriptions = {
+        {"0", "Timer"},
+        {"1", "Keyboard"},
+        {"2", "Cascade"},
+        {"3", "Serial"},
+        {"4", "Serial"},
+        {"5", "Parallel"},
+        {"6", "Floppy"},
+        {"7", "Parallel"},
+        {"8", "RTC"},
+        {"9", "ACPI"},
+        {"10", "Network"},
+        {"11", "USB"},
+        {"12", "PS/2 Mouse"},
+        {"13", "FPU"},
+        {"14", "Primary IDE"},
+        {"15", "Secondary IDE"},
+        {"16", "SATA"},
+        {"17", "USB"},
+        {"18", "USB"},
+        {"19", "USB"},
+        {"20", "USB"},
+        {"21", "USB"},
+        {"22", "USB"},
+        {"23", "USB"},
+        {"24", "USB"},
+        {"25", "USB"},
+        {"26", "USB"},
+        {"27", "USB"},
+        {"28", "USB"},
+        {"29", "USB"},
+        {"30", "USB"},
+        {"31", "USB"},
+        {"32", "Local APIC Timer"},
+        {"33", "Local APIC Thermal"},
+        {"34", "Local APIC Performance"},
+        {"35", "Local APIC Error"},
+        {"36", "Local APIC Spurious"},
+        {"37", "Local APIC"},
+        {"38", "Local APIC"},
+        {"39", "Local APIC"},
+        {"40", "Local APIC"},
+        {"41", "Local APIC"},
+        {"42", "Local APIC"},
+        {"43", "Local APIC"},
+        {"44", "Local APIC"},
+        {"45", "Local APIC"},
+        {"46", "PCIe"},
+        {"47", "PCIe"},
+        {"48", "PCIe"},
+        {"49", "PCIe"},
+        {"50", "PCIe"},
+        {"51", "PCIe"},
+        {"52", "PCIe"},
+        {"53", "PCIe"},
+        {"54", "PCIe"},
+        {"55", "GPU"},
+        {"56", "Audio"},
+        {"57", "Audio"},
+        {"58", "Audio"},
+        {"59", "Audio"},
+        {"60", "Audio"},
+        {"61", "Audio"},
+        {"62", "Audio"},
+        {"63", "Audio"},
+        {"64", "Audio"},
+        {"65", "Audio"},
+        {"66", "Audio"},
+        {"67", "Audio"},
+        {"68", "Audio"},
+        {"69", "Audio"},
+        {"70", "Audio"},
+        {"71", "Audio"},
+        {"72", "Audio"},
+        {"73", "Audio"},
+        {"74", "Audio"},
+        {"75", "Audio"},
+        {"76", "Audio"},
+        {"77", "Audio"},
+        {"78", "Audio"},
+        {"79", "Audio"},
+        {"80", "Audio"},
+        {"81", "Audio"},
+        {"82", "Audio"},
+        {"83", "Audio"},
+        {"84", "Audio"},
+        {"85", "Audio"},
+        {"86", "Audio"},
+        {"87", "Audio"},
+        {"88", "Audio"},
+        {"89", "Audio"},
+        {"90", "Audio"},
+        {"91", "Audio"},
+        {"92", "Audio"},
+        {"93", "Audio"},
+        {"94", "Audio"},
+        {"95", "Audio"},
+        {"96", "Audio"},
+        {"97", "Audio"},
+        {"98", "Audio"},
+        {"99", "Audio"},
+        {"100", "Audio"},
+        {"101", "Audio"},
+        {"102", "Audio"},
+        {"103", "Audio"},
+        {"104", "Audio"},
+        {"105", "Audio"},
+        {"106", "Audio"},
+        {"107", "Audio"},
+        {"108", "Audio"},
+        {"109", "Audio"},
+        {"110", "Audio"},
+        {"111", "Audio"},
+        {"112", "Audio"},
+        {"113", "Audio"},
+        {"114", "Audio"},
+        {"115", "Audio"},
+        {"116", "Audio"},
+        {"117", "Audio"},
+        {"118", "Audio"},
+        {"119", "Audio"},
+        {"120", "Audio"},
+        {"121", "Audio"},
+        {"122", "Audio"},
+        {"123", "Audio"},
+        {"124", "Audio"},
+        {"125", "Audio"},
+        {"126", "Audio"},
+        {"127", "Audio"},
+        {"128", "Audio"},
+        {"129", "Audio"},
+        {"130", "Audio"},
+        {"131", "Audio"},
+        {"132", "Audio"},
+        {"133", "Audio"},
+        {"134", "Audio"},
+        {"135", "Audio"},
+        {"136", "Audio"},
+        {"137", "Audio"},
+        {"138", "Audio"},
+        {"139", "Audio"},
+        {"140", "Audio"},
+        {"141", "Audio"},
+        {"142", "Audio"},
+        {"143", "Audio"},
+        {"144", "Audio"},
+        {"145", "Audio"},
+        {"146", "Audio"},
+        {"147", "Audio"},
+        {"148", "Audio"},
+        {"149", "Audio"},
+        {"150", "Audio"},
+        {"151", "Audio"},
+        {"152", "Audio"},
+        {"153", "Audio"},
+        {"154", "Audio"},
+        {"155", "Audio"},
+        {"156", "Audio"},
+        {"157", "Audio"},
+        {"158", "Audio"},
+        {"159", "Audio"},
+        {"160", "Audio"},
+        {"161", "Audio"},
+        {"162", "Audio"},
+        {"163", "Audio"},
+        {"164", "Audio"},
+        {"165", "Audio"},
+        {"166", "Audio"},
+        {"167", "Audio"},
+        {"168", "Audio"},
+        {"169", "Audio"},
+        {"170", "Audio"},
+        {"171", "Audio"},
+        {"172", "Audio"},
+        {"173", "Audio"},
+        {"174", "Audio"},
+        {"175", "Audio"},
+        {"176", "Audio"},
+        {"177", "Audio"},
+        {"178", "Audio"},
+        {"179", "Audio"},
+        {"180", "Audio"},
+        {"181", "Audio"},
+        {"182", "Audio"},
+        {"183", "Audio"},
+        {"184", "Audio"},
+        {"185", "Audio"},
+        {"186", "Audio"},
+        {"187", "Audio"},
+        {"188", "Audio"},
+        {"189", "Audio"},
+        {"190", "Audio"},
+        {"191", "Audio"},
+        {"192", "Audio"},
+        {"193", "Audio"},
+        {"194", "Audio"},
+        {"195", "Audio"},
+        {"196", "Audio"},
+        {"197", "Audio"},
+        {"198", "Audio"},
+        {"199", "Audio"},
+        {"200", "Audio"},
+        {"201", "Audio"},
+        {"202", "Audio"},
+        {"203", "Audio"},
+        {"204", "Audio"},
+        {"205", "Audio"},
+        {"206", "Audio"},
+        {"207", "Audio"},
+        {"208", "Audio"},
+        {"209", "Audio"},
+        {"210", "Audio"},
+        {"211", "Audio"},
+        {"212", "Audio"},
+        {"213", "Audio"},
+        {"214", "Audio"},
+        {"215", "Audio"},
+        {"216", "Audio"},
+        {"217", "Audio"},
+        {"218", "Audio"},
+        {"219", "Audio"},
+        {"220", "Audio"},
+        {"221", "Audio"},
+        {"222", "Audio"},
+        {"223", "Audio"},
+        {"224", "Audio"},
+        {"225", "Audio"},
+        {"226", "Audio"},
+        {"227", "Audio"},
+        {"228", "Audio"},
+        {"229", "Audio"},
+        {"230", "Audio"},
+        {"231", "Audio"},
+        {"232", "Audio"},
+        {"233", "Audio"},
+        {"234", "Audio"},
+        {"235", "Audio"},
+        {"236", "Audio"},
+        {"237", "Audio"},
+        {"238", "Audio"},
+        {"239", "Audio"},
+        {"240", "Audio"},
+        {"241", "Audio"},
+        {"242", "Audio"},
+        {"243", "Audio"},
+        {"244", "Audio"},
+        {"245", "Audio"},
+        {"246", "Audio"},
+        {"247", "Audio"},
+        {"248", "Audio"},
+        {"249", "Audio"},
+        {"250", "Audio"},
+        {"251", "Audio"},
+        {"252", "Audio"},
+        {"253", "Audio"},
+        {"254", "Audio"},
+        {"255", "Audio"}
+    };
+    
+    auto it = interrupt_descriptions.find(irq_name);
+    if (it != interrupt_descriptions.end()) {
+        return it->second;
+    }
+    
+    // If not found, return empty string
+    return "";
 }

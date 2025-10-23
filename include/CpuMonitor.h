@@ -47,6 +47,7 @@ public:
            double getSoftIRQ() const { return current_.softirq_percent; }
     void printInterruptStats();
     std::map<std::string, std::vector<unsigned long>> getInterruptCounts() const;
+    std::string getInterruptDescription(const std::string& irq_name) const;
     
 private:
     bool parseProcStat();

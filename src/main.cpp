@@ -37,10 +37,9 @@ void clearScreen() {
 }
 
 void printSystemDashboard(CpuMonitor& cpu, MemoryMonitor& mem, StorageMonitor& storage) {
-    // Enhanced Header with Phase Info
+    // Compact Header
     std::cout << "╔═══════════════════════════════════════════════════════════════════════╗" << std::endl;
-    std::cout << "║                    🚀 Tiny Monitor - Phase 2 Dashboard 🚀           ║" << std::endl;
-    std::cout << "║                        Storage Deep Dive & Interrupt Analysis         ║" << std::endl;
+    std::cout << "║                    🚀 Tiny Monitor - Quick Issue Detection 🚀         ║" << std::endl;
     std::cout << "╚═══════════════════════════════════════════════════════════════════════╝" << std::endl;
     std::cout << std::endl;
     
@@ -48,94 +47,106 @@ void printSystemDashboard(CpuMonitor& cpu, MemoryMonitor& mem, StorageMonitor& s
     double cpu_usage = cpu.getCpuUsage();
     double mem_usage = mem.getMemoryUsage();
     double total_iops = storage.getTotalIOPS();
-    double total_throughput = storage.getTotalThroughput();
     int hot_devices = storage.getHotDeviceCount();
     int bottlenecks = storage.getBottleneckCount();
     
-    // System Overview with enhanced progress bars
+    // Compact System Overview
     std::cout << "📊 SYSTEM OVERVIEW" << std::endl;
     std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
     
-    // CPU with Hardware IRQ
-    std::cout << "🖥️  CPU Usage:    ";
+    // CPU
+    std::cout << "🖥️  CPU:    ";
     printProgressBar(cpu_usage, 100.0);
-    std::cout << " " << std::fixed << std::setprecision(1) << cpu_usage << "%" << std::endl;
+    std::cout << " " << std::fixed << std::setprecision(1) << cpu_usage << "%";
+    if (cpu.getIOWait() > 10) std::cout << " ⚠️  IOWait: " << std::fixed << std::setprecision(1) << cpu.getIOWait() << "%";
+    std::cout << std::endl;
     
-    // Memory with pressure indicator
-    std::cout << "🧠 Memory:       ";
+    // Memory
+    std::cout << "🧠 Memory: ";
     printProgressBar(mem_usage, 100.0);
-    std::cout << " " << std::fixed << std::setprecision(1) << mem_usage << "%" << std::endl;
+    std::cout << " " << std::fixed << std::setprecision(1) << mem_usage << "%";
+    if (mem_usage > 80) std::cout << " ⚠️  Low Available: " << std::fixed << std::setprecision(0) << (mem.getAvailableMemory() / 1024.0) << "MB";
+    std::cout << std::endl;
     
-    // Storage with IOPS and throughput
-    std::cout << "💾 Storage:      ";
-    printProgressBar(total_iops, 10000.0); // Higher scale for high-end systems
+    // Storage
+    std::cout << "💾 Storage: ";
+    printProgressBar(total_iops, 10000.0);
     std::cout << " " << std::fixed << std::setprecision(0) << total_iops << " IOPS";
-    std::cout << " (" << std::fixed << std::setprecision(1) << total_throughput << " MB/s)" << std::endl;
+    if (hot_devices > 0) std::cout << " ⚠️  " << hot_devices << " hot devices";
+    std::cout << std::endl;
     
     std::cout << std::endl;
     
-    // Enhanced Detailed Breakdown
-    std::cout << "📈 DETAILED BREAKDOWN" << std::endl;
+    // Quick Issue Detection
+    std::cout << "🚨 ISSUE DETECTION" << std::endl;
     std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
     
-    // CPU Breakdown with Hardware IRQ
-    std::cout << "🖥️  CPU Breakdown:" << std::endl;
-    std::cout << "   User:   " << std::setw(6) << std::fixed << std::setprecision(1) << cpu.getUserUsage() << "%";
-    std::cout << "    System: " << std::setw(6) << std::fixed << std::setprecision(1) << cpu.getSystemUsage() << "%" << std::endl;
-    std::cout << "   IOWait: " << std::setw(6) << std::fixed << std::setprecision(1) << cpu.getIOWait() << "%";
-    std::cout << "    HardIRQ:" << std::setw(6) << std::fixed << std::setprecision(1) << cpu.getHardIRQ() << "%" << std::endl;
-    std::cout << "   SoftIRQ:" << std::setw(6) << std::fixed << std::setprecision(1) << cpu.getSoftIRQ() << "%" << std::endl;
+    bool has_issues = false;
+    
+    // CPU Issues
+    if (cpu_usage > 90) {
+        std::cout << "🔴 CRITICAL: CPU overload (" << std::fixed << std::setprecision(1) << cpu_usage << "%)" << std::endl;
+        has_issues = true;
+    } else if (cpu_usage > 80) {
+        std::cout << "🟡 WARNING: High CPU usage (" << std::fixed << std::setprecision(1) << cpu_usage << "%)" << std::endl;
+        has_issues = true;
+    }
+    
+    if (cpu.getIOWait() > 20) {
+        std::cout << "🔴 CRITICAL: High IOWait (" << std::fixed << std::setprecision(1) << cpu.getIOWait() << "%) - Storage bottleneck" << std::endl;
+        has_issues = true;
+    } else if (cpu.getIOWait() > 10) {
+        std::cout << "🟡 WARNING: Elevated IOWait (" << std::fixed << std::setprecision(1) << cpu.getIOWait() << "%)" << std::endl;
+        has_issues = true;
+    }
+    
+    // Memory Issues
+    if (mem_usage > 95) {
+        std::cout << "🔴 CRITICAL: Memory exhaustion (" << std::fixed << std::setprecision(1) << mem_usage << "%)" << std::endl;
+        has_issues = true;
+    } else if (mem_usage > 85) {
+        std::cout << "🟡 WARNING: High memory usage (" << std::fixed << std::setprecision(1) << mem_usage << "%)" << std::endl;
+        has_issues = true;
+    }
+    
+    // Storage Issues
+    if (hot_devices > 3) {
+        std::cout << "🔴 CRITICAL: Multiple hot storage devices (" << hot_devices << " devices)" << std::endl;
+        has_issues = true;
+    } else if (hot_devices > 1) {
+        std::cout << "🟡 WARNING: Hot storage devices detected (" << hot_devices << " devices)" << std::endl;
+        has_issues = true;
+    }
+    
+    if (bottlenecks > 2) {
+        std::cout << "🔴 CRITICAL: Storage bottlenecks (" << bottlenecks << " devices at 100% queue)" << std::endl;
+        has_issues = true;
+    } else if (bottlenecks > 0) {
+        std::cout << "🟡 WARNING: Storage bottlenecks detected (" << bottlenecks << " devices)" << std::endl;
+        has_issues = true;
+    }
+    
+    // Interrupt Analysis (only if there are issues)
+    if (cpu_usage > 50 || cpu.getIOWait() > 5) {
+        std::cout << std::endl;
+        cpu.printInterruptStats();
+    }
     
     std::cout << std::endl;
     
-    // Memory Breakdown
-    std::cout << "🧠 Memory Breakdown:" << std::endl;
-    std::cout << "   Available: " << std::setw(8) << std::fixed << std::setprecision(0) << (mem.getAvailableMemory() / 1024.0) << " MB";
-    std::cout << "    Buffers: " << std::setw(8) << std::fixed << std::setprecision(0) << (mem.getBufferUsage() / 1024.0) << " MB" << std::endl;
-    std::cout << "   Cache:    " << std::setw(8) << std::fixed << std::setprecision(0) << (mem.getCacheUsage() / 1024.0) << " MB" << std::endl;
-    
-    std::cout << std::endl;
-    
-    // Storage Breakdown
-    std::cout << "💾 Storage Breakdown:" << std::endl;
-    std::cout << "   Total IOPS:    " << std::setw(8) << std::fixed << std::setprecision(0) << total_iops;
-    std::cout << "    Throughput: " << std::setw(8) << std::fixed << std::setprecision(1) << total_throughput << " MB/s" << std::endl;
-    std::cout << "   Hot Devices:   " << std::setw(8) << hot_devices;
-    std::cout << "    Bottlenecks: " << std::setw(8) << bottlenecks << std::endl;
-    
-    std::cout << std::endl;
-
-    // Enhanced Interrupt Analysis
-    cpu.printInterruptStats();
-    
-    std::cout << std::endl;
-    
-    // Enhanced Status with more detailed indicators
+    // System Status
     std::cout << "🎯 SYSTEM STATUS" << std::endl;
     std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
-    std::cout << "Status: ";
     
-    bool cpu_stress = cpu_usage > 80;
-    bool mem_stress = mem_usage > 80;
-    bool storage_stress = total_iops > 10000 || hot_devices > 5;
-    bool interrupt_storm = bottlenecks > 10;
-    
-    if (cpu_stress || mem_stress || storage_stress || interrupt_storm) {
-        std::cout << "🔴 SYSTEM UNDER STRESS";
-        if (cpu_stress) std::cout << " (High CPU)";
-        if (mem_stress) std::cout << " (High Memory)";
-        if (storage_stress) std::cout << " (Storage Issues)";
-        if (interrupt_storm) std::cout << " (Interrupt Storms)";
-    } else if (cpu_usage > 50 || mem_usage > 50 || total_iops > 1000) {
-        std::cout << "🟡 SYSTEM MODERATE LOAD";
+    if (!has_issues) {
+        std::cout << "Status: 🟢 SYSTEM HEALTHY - No issues detected" << std::endl;
     } else {
-        std::cout << "🟢 SYSTEM HEALTHY";
+        std::cout << "Status: 🔴 ATTENTION REQUIRED - Issues detected above" << std::endl;
     }
-    std::cout << std::endl;
 }
 
 int main() {
-    std::cout << "Tiny Monitor - Phase 2: Storage Deep Dive" << std::endl;
+    std::cout << "Tiny Monitor - Quick Issue Detection" << std::endl;
     std::cout << "Press Ctrl+C to exit" << std::endl;
     std::cout << std::endl;
     

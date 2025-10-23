@@ -48,7 +48,5 @@ private:
     
     std::ifstream meminfo_file_;
     MemoryStats current_;
-    MemoryStats previous_;
-    bool first_reading_;
     
 };
