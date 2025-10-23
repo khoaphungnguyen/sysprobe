@@ -10,26 +10,32 @@ StorageMonitor::StorageMonitor() : first_reading_(true) {
     diskstats_file_.open("/proc/diskstats");
     if (!diskstats_file_.is_open()) {
         std::cerr << "Failed to open /proc/diskstats" << std::endl;
+        return;
     }
     
     // Discover NVMe devices
     if (!discoverDevices()) {
         std::cerr << "Failed to discover NVMe devices" << std::endl;
+        return;
     }
 }
 
+// Update StorageMonitor to support all device types
 bool StorageMonitor::discoverDevices() {
     devices_.clear();
     
     try {
-        // Scan /sys/block/ for nvme* devices
         for (const auto& entry : std::filesystem::directory_iterator("/sys/block")) {
             std::string device_name = entry.path().filename().string();
             
-            // Check if it's an NVMe device
-            if (device_name.substr(0, 4) == "nvme") {
+            // Support all block devices, not just NVMe
+            if (device_name.substr(0, 4) == "nvme" ||  // NVMe
+                device_name.substr(0, 2) == "sd" ||    // SATA/SAS
+                device_name.substr(0, 3) == "md" ||    // VROC drive
+                device_name.substr(0, 3) == "gdg" ||    // GRAID drive
+                device_name.substr(0, 3) == "sxl" ) {   // SMARTRAID drive
+                
                 devices_.push_back(device_name);
-                std::cout << "Discovered device: " << device_name << std::endl;
             }
         }
     } catch (const std::filesystem::filesystem_error& e) {
@@ -37,12 +43,6 @@ bool StorageMonitor::discoverDevices() {
         return false;
     }
     
-    if (devices_.empty()) {
-        std::cerr << "No NVMe devices found" << std::endl;
-        return false;
-    }
-    
-    std::cout << "Found " << devices_.size() << " NVMe devices" << std::endl;
     return true;
 }
 
@@ -62,7 +62,7 @@ bool StorageMonitor::update() {
     // Calculate performance metrics
     calculatePerformance();
     
-    // Detect hot devices
+    // Detect hot devices AFTER we have data
     detectHotDevices();
     
     // Calculate queue statistics
@@ -71,18 +71,22 @@ bool StorageMonitor::update() {
     return true;
 }
 
-bool StorageMonitor::parseDiskStats() {
+bool StorageMonitor::parseDiskStats() {    
     // Reset file position to beginning
     diskstats_file_.seekg(0);
     diskstats_file_.clear();
     
     std::string line;
+    
     while (std::getline(diskstats_file_, line)) {
+        if (line.empty()) continue;
+        
         std::istringstream iss(line);
         std::string device_name;
+        int major, minor;
         
-        // Parse device name (first field)
-        iss >> device_name;
+        // Parse major, minor, then device name
+        iss >> major >> minor >> device_name;
         
         // Check if it's one of our NVMe devices
         if (std::find(devices_.begin(), devices_.end(), device_name) != devices_.end()) {
@@ -90,11 +94,12 @@ bool StorageMonitor::parseDiskStats() {
             stats.device_name = device_name;
             
             // Parse disk statistics
-            iss >> stats.reads >> stats.read_merges >> stats.read_sectors >> stats.read_time
+            if (iss >> stats.reads >> stats.read_merges >> stats.read_sectors >> stats.read_time
                 >> stats.writes >> stats.write_merges >> stats.write_sectors >> stats.write_time
-                >> stats.io_in_progress >> stats.io_time >> stats.weighted_io_time;
-            
-            disk_stats_[device_name] = stats;
+                >> stats.io_in_progress >> stats.io_time >> stats.weighted_io_time) {
+                
+                disk_stats_[device_name] = stats;
+            }
         }
     }
     
@@ -146,6 +151,11 @@ void StorageMonitor::calculatePerformance() {
 }
 
 void StorageMonitor::detectHotDevices() {
+     // Check if we have any data to work with
+     if (disk_stats_.empty()) {
+        return;
+    }
+
     // Sort devices by IOPS to find hot devices
     std::vector<std::pair<std::string, double>> device_iops;
     
@@ -181,6 +191,12 @@ void StorageMonitor::calculateQueueStats() {
 void StorageMonitor::printStats() {
     if (first_reading_) {
         std::cout << "Storage Stats (first reading - metrics not available yet)" << std::endl;
+        return;
+    }
+
+     // Check if we have any data
+     if (disk_stats_.empty()) {
+        std::cout << "No storage data available" << std::endl;
         return;
     }
     
@@ -224,6 +240,8 @@ void StorageMonitor::printStats() {
                   << std::setw(10) << status << std::endl;
     }
 }
+
+
 
 void StorageMonitor::printHotDevices() {
     std::cout << "\n=== Hot Devices Analysis ===" << std::endl;
@@ -309,5 +327,126 @@ void StorageMonitor::printPerformanceSummary() {
     if (bottleneck_count > 0) {
         std::cout << "Performance Impact: " << std::fixed << std::setprecision(1) 
                   << (100.0 - (total_iops / (devices_.size() * 3000.0)) * 100.0) << "% performance loss" << std::endl;
+    }
+}
+
+
+
+double StorageMonitor::getTotalIOPS() const {
+    double total = 0.0;
+    for (const auto& [device_name, stats] : disk_stats_) {
+        total += stats.total_iops;
+    }
+    return total;
+}
+
+double StorageMonitor::getTotalThroughput() const {
+    double total = 0.0;
+    for (const auto& [device_name, stats] : disk_stats_) {
+        total += stats.total_mbps;
+    }
+    return total;
+}
+
+int StorageMonitor::getHotDeviceCount() const {
+    int count = 0;
+    for (const auto& [device_name, stats] : disk_stats_) {
+        if (stats.is_hot_device) count++;
+    }
+    return count;
+}
+
+int StorageMonitor::getBottleneckCount() const {
+    int count = 0;
+    for (const auto& [device_name, stats] : disk_stats_) {
+        if (stats.queue_depth > 100) count++;
+    }
+    return count;
+}
+
+bool StorageMonitor::parseDeviceStats() {
+    for (const auto& device : devices_) {
+        std::string stat_path = "/sys/block/" + device + "/stat";
+        std::ifstream stat_file(stat_path);
+        
+        if (stat_file.is_open()) {
+            std::string line;
+            std::getline(stat_file, line);
+            std::istringstream iss(line);
+            
+            // Parse /sys/block/{device}/stat format
+            unsigned long reads, read_merges, read_sectors, read_time;
+            unsigned long writes, write_merges, write_sectors, write_time;
+            unsigned long io_in_progress, io_time, weighted_io_time;
+            
+            if (iss >> reads >> read_merges >> read_sectors >> read_time
+                >> writes >> write_merges >> write_sectors >> write_time
+                >> io_in_progress >> io_time >> weighted_io_time) {
+                
+                // Calculate latency metrics
+                double total_ios = reads + writes;
+                if (total_ios > 0) {
+                    device_details_[device].avg_latency = (double)weighted_io_time / total_ios;
+                    device_details_[device].service_time = (double)(read_time + write_time) / total_ios;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool StorageMonitor::parseQueueStats() {
+    for (const auto& device : devices_) {
+        std::string queue_path = "/sys/block/" + device + "/queue";
+        
+        // Read queue depth
+        std::ifstream depth_file(queue_path + "/nr_requests");
+        if (depth_file.is_open()) {
+            depth_file >> device_details_[device].max_queue_depth;
+        }
+        
+        // Read current queue depth from /proc/diskstats
+        if (disk_stats_.find(device) != disk_stats_.end()) {
+            device_details_[device].queue_depth = disk_stats_[device].io_in_progress;
+        }
+    }
+    return true;
+}
+
+bool StorageMonitor::parseSchedulerInfo() {
+    for (const auto& device : devices_) {
+        std::string scheduler_path = "/sys/block/" + device + "/queue/scheduler";
+        std::ifstream scheduler_file(scheduler_path);
+        
+        if (scheduler_file.is_open()) {
+            std::string line;
+            std::getline(scheduler_file, line);
+            
+            // Parse scheduler info (e.g., "mq-deadline kyber bfq [none]")
+            size_t start = line.find('[');
+            size_t end = line.find(']');
+            if (start != std::string::npos && end != std::string::npos) {
+                device_details_[device].scheduler = line.substr(start + 1, end - start - 1);
+            }
+        }
+    }
+    return true;
+}
+
+void StorageMonitor::printDetailedDeviceStats() {
+    std::cout << "Detailed Device Statistics:" << std::endl;
+    for (const auto& [device_name, stats] : disk_stats_) {
+        std::cout << "Device: " << device_name << std::endl;
+        std::cout << "  IOPS: " << stats.total_iops << std::endl;
+        std::cout << "  Throughput: " << stats.total_mbps << " MB/s" << std::endl;
+        std::cout << "  Latency: " << stats.avg_latency << " ms" << std::endl;
+        std::cout << "  Queue Depth: " << stats.queue_depth << std::endl;
+    }
+}
+
+void StorageMonitor::printSchedulerInfo() {
+    std::cout << "I/O Scheduler Info:" << std::endl;
+    for (const auto& [device_name, details] : device_details_) {
+        std::cout << "Device: " << device_name << " - Scheduler: " << details.scheduler << std::endl;
     }
 }

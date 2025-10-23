@@ -17,7 +17,7 @@ bool MemoryMonitor::update() {
     }
     
     // Parse current reading
-    if (!parseMemInfo()) {
+    if (!parseProcMeminfo()) {
         return false;
     }
     
@@ -28,7 +28,7 @@ bool MemoryMonitor::update() {
     return true;
 }
 
-bool MemoryMonitor::parseMemInfo() {
+bool MemoryMonitor::parseProcMeminfo() {
     // Reset file position to beginning
     meminfo_file_.seekg(0);
     meminfo_file_.clear();

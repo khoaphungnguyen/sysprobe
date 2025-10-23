@@ -1,7 +1,9 @@
-#pragma once 
+#pragma once
 
 #include <string>
 #include <fstream>
+#include <map>
+#include <vector>
 
 struct CpuTimes {
     unsigned long user;
@@ -29,19 +31,32 @@ struct CpuTimes {
 };
 
 class CpuMonitor {
-    public:
-        CpuMonitor();
-        ~CpuMonitor() = default;  // Destructor
-        
-        bool update();       // Call this every second
-        void printStats();   // Print current stats
-        
-    private:
-        bool parseProcStat();
-        void calculatePercentages();
-        
-        std::ifstream proc_stat_file_;
-        CpuTimes current_;
-        CpuTimes previous_;
-        bool first_reading_;
+public:
+    CpuMonitor();
+    ~CpuMonitor() = default;
+    
+    bool update();
+    void printStats();
+    
+           // Add these getter methods
+           double getCpuUsage() const { return 100.0 - current_.idle_percent; }
+           double getUserUsage() const { return current_.user_percent; }
+           double getSystemUsage() const { return current_.system_percent; }
+           double getIOWait() const { return current_.iowait_percent; }
+           double getHardIRQ() const { return current_.irq_percent; }
+           double getSoftIRQ() const { return current_.softirq_percent; }
+    void printInterruptStats();
+    std::map<std::string, std::vector<unsigned long>> getInterruptCounts() const;
+    
+private:
+    bool parseProcStat();
+    void calculatePercentages();
+    bool parseProcInterrupts();
+    std::map<std::string, std::vector<unsigned long>> interrupt_counts_;
+    std::map<std::string, std::vector<unsigned long>> previous_interrupt_counts_;
+    
+    std::ifstream proc_stat_file_;
+    CpuTimes current_;
+    CpuTimes previous_;
+    bool first_reading_;
 };

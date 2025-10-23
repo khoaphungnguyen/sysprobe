@@ -43,28 +43,47 @@ struct QueueStats {
 };
 
 class StorageMonitor {
-public:
-    StorageMonitor();
-    ~StorageMonitor() = default;
-    
-    bool update();                    // Update all device stats
-    void printStats();               // Print storage statistics
-    void printHotDevices();          // Print hot devices
-    void printQueueAnalysis();       // Print queue analysis
-    void printPerformanceSummary();  // Print performance summary
-    
-private:
-    bool discoverDevices();         // Discover NVMe devices
-    bool parseDiskStats();           // Parse /proc/diskstats
-    bool parseDeviceStats();         // Parse /sys/block/{device}/stat
-    void calculatePerformance();    // Calculate performance metrics
-    void detectHotDevices();         // Detect hot devices
-    void calculateQueueStats();      // Calculate queue statistics
-    
-    std::ifstream diskstats_file_;
-    std::map<std::string, DiskStats> disk_stats_;
-    std::map<std::string, DiskStats> previous_stats_;
-    std::vector<std::string> devices_;
-    std::unordered_map<std::string, QueueStats> queue_stats_;
-    bool first_reading_;
-};
+    public:
+        StorageMonitor();
+        ~StorageMonitor() = default;
+        
+        bool update();
+        void printStats();
+        void printHotDevices();
+        void printQueueAnalysis();
+        void printPerformanceSummary();
+        
+        // Add these getter methods
+        double getTotalIOPS() const;
+        double getTotalThroughput() const;
+        int getHotDeviceCount() const;
+        int getBottleneckCount() const;
+        void printDetailedDeviceStats();
+        void printSchedulerInfo();
+        
+    private:
+        bool discoverDevices();
+        bool parseDiskStats();
+        bool parseDeviceStats();  // Parse /sys/block/{device}/stat
+        bool parseQueueStats();   // Parse queue depth info
+        bool parseSchedulerInfo(); // Parse I/O scheduler
+        void calculatePerformance();
+        void detectHotDevices();
+        void calculateQueueStats();
+        void calculateLatencyMetrics();
+
+        struct DeviceDetails {
+            std::string scheduler;
+            unsigned long queue_depth;
+            unsigned long max_queue_depth;
+            double avg_latency;
+            double service_time;
+        };
+        std::map<std::string, DeviceDetails> device_details_;
+        std::ifstream diskstats_file_;
+        std::map<std::string, DiskStats> disk_stats_;
+        std::map<std::string, DiskStats> previous_stats_;
+        std::vector<std::string> devices_;
+        std::unordered_map<std::string, QueueStats> queue_stats_;
+        bool first_reading_;
+    };
