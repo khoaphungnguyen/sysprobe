@@ -215,9 +215,13 @@ void CpuMonitor::printInterruptStats() {
         std::cout << std::endl;
         if (storm_count > 0) {
             std::cout << "⚠️  CRITICAL: " << storm_count << " interrupt storms detected!" << std::endl;
+            std::cout << "   → Impact: CPU overwhelmed by interrupts, I/O performance severely degraded" << std::endl;
+            std::cout << "   → Solution: Check device drivers, consider interrupt affinity tuning" << std::endl;
         }
         if (unbalanced_count > 0) {
             std::cout << "⚠️  WARNING: " << unbalanced_count << " unbalanced interrupts" << std::endl;
+            std::cout << "   → Impact: Some CPU cores overloaded, others idle - poor scaling" << std::endl;
+            std::cout << "   → Solution: Use irqbalance or manual IRQ affinity to distribute load" << std::endl;
         }
     }
 }

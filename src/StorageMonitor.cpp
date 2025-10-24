@@ -72,9 +72,14 @@ bool StorageMonitor::update() {
 }
 
 bool StorageMonitor::parseDiskStats() {    
-    // Reset file position to beginning
-    diskstats_file_.seekg(0);
-    diskstats_file_.clear();
+    // Close and reopen the file to ensure fresh reading
+    diskstats_file_.close();
+    diskstats_file_.open("/proc/diskstats");
+    
+    if (!diskstats_file_.is_open()) {
+        std::cerr << "Failed to reopen /proc/diskstats" << std::endl;
+        return false;
+    }
     
     std::string line;
     

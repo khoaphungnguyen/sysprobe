@@ -54,25 +54,52 @@ void printSystemDashboard(CpuMonitor& cpu, MemoryMonitor& mem, StorageMonitor& s
     std::cout << "📊 SYSTEM OVERVIEW" << std::endl;
     std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
     
-    // CPU
+    // CPU - Enhanced with detailed breakdown
     std::cout << "🖥️  CPU:    ";
     printProgressBar(cpu_usage, 100.0);
     std::cout << " " << std::fixed << std::setprecision(1) << cpu_usage << "%";
-    if (cpu.getIOWait() > 10) std::cout << " ⚠️  IOWait: " << std::fixed << std::setprecision(1) << cpu.getIOWait() << "%";
+    
+    // Show detailed breakdown if there's significant activity
+    if (cpu_usage > 5.0) {
+        std::cout << " [User:" << std::fixed << std::setprecision(1) << cpu.getUserUsage() 
+                  << "% Sys:" << cpu.getSystemUsage() 
+                  << "% IO:" << cpu.getIOWait() 
+                  << "% IRQ:" << cpu.getHardIRQ() 
+                  << "% SoftIRQ:" << cpu.getSoftIRQ() << "%]";
+    }
+    
+    if (cpu.getIOWait() > 10) std::cout << " ⚠️  High IOWait";
+    if (cpu.getHardIRQ() > 5) std::cout << " ⚠️  High HardIRQ";
+    if (cpu.getSoftIRQ() > 5) std::cout << " ⚠️  High SoftIRQ";
     std::cout << std::endl;
     
-    // Memory
+    // Memory - Enhanced with detailed breakdown
     std::cout << "🧠 Memory: ";
     printProgressBar(mem_usage, 100.0);
     std::cout << " " << std::fixed << std::setprecision(1) << mem_usage << "%";
-    if (mem_usage > 80) std::cout << " ⚠️  Low Available: " << std::fixed << std::setprecision(0) << (mem.getAvailableMemory() / 1024.0) << "MB";
+    
+    // Show detailed breakdown
+    std::cout << " [Used:" << std::fixed << std::setprecision(1) << mem_usage 
+              << "% Cache:" << mem.getCacheUsage() 
+              << "% Buffer:" << mem.getBufferUsage() 
+              << "% Avail:" << std::fixed << std::setprecision(0) << (mem.getAvailableMemory() / 1024.0) << "MB]";
+    
+    if (mem_usage > 80) std::cout << " ⚠️  Low Available";
+    if (mem.getCacheUsage() > 50) std::cout << " ⚠️  High Cache";
     std::cout << std::endl;
     
-    // Storage
+    // Storage - Enhanced with better explanations
     std::cout << "💾 Storage: ";
     printProgressBar(total_iops, 10000.0);
     std::cout << " " << std::fixed << std::setprecision(0) << total_iops << " IOPS";
-    if (hot_devices > 0) std::cout << " ⚠️  " << hot_devices << " hot devices";
+    
+    // Show detailed storage info
+    if (hot_devices > 0) {
+        std::cout << " ⚠️  " << hot_devices << " hot devices (high activity)";
+    }
+    if (bottlenecks > 0) {
+        std::cout << " ⚠️  " << bottlenecks << " bottlenecks (100% queue)";
+    }
     std::cout << std::endl;
     
     std::cout << std::endl;
@@ -109,27 +136,62 @@ void printSystemDashboard(CpuMonitor& cpu, MemoryMonitor& mem, StorageMonitor& s
         has_issues = true;
     }
     
-    // Storage Issues
+    // Storage Issues - Enhanced with explanations
     if (hot_devices > 3) {
-        std::cout << "🔴 CRITICAL: Multiple hot storage devices (" << hot_devices << " devices)" << std::endl;
+        std::cout << "🔴 CRITICAL: Multiple hot storage devices (" << hot_devices << " devices) - High I/O activity may cause overheating" << std::endl;
         has_issues = true;
     } else if (hot_devices > 1) {
-        std::cout << "🟡 WARNING: Hot storage devices detected (" << hot_devices << " devices)" << std::endl;
+        std::cout << "🟡 WARNING: Hot storage devices detected (" << hot_devices << " devices) - Monitor temperature" << std::endl;
         has_issues = true;
     }
     
     if (bottlenecks > 2) {
-        std::cout << "🔴 CRITICAL: Storage bottlenecks (" << bottlenecks << " devices at 100% queue)" << std::endl;
+        std::cout << "🔴 CRITICAL: Storage bottlenecks (" << bottlenecks << " devices at 100% queue) - I/O requests queued, high latency" << std::endl;
         has_issues = true;
     } else if (bottlenecks > 0) {
-        std::cout << "🟡 WARNING: Storage bottlenecks detected (" << bottlenecks << " devices)" << std::endl;
+        std::cout << "🟡 WARNING: Storage bottlenecks detected (" << bottlenecks << " devices) - I/O queue full, performance degraded" << std::endl;
         has_issues = true;
     }
     
     // Interrupt Analysis (only if there are issues)
-    if (cpu_usage > 50 || cpu.getIOWait() > 5) {
+    if (cpu_usage > 50 || cpu.getIOWait() > 5 || cpu.getHardIRQ() > 5 || cpu.getSoftIRQ() > 5) {
         std::cout << std::endl;
         cpu.printInterruptStats();
+    }
+    
+    // Performance Impact Analysis
+    if (has_issues) {
+        std::cout << std::endl;
+        std::cout << "🎯 PERFORMANCE IMPACT ANALYSIS" << std::endl;
+        std::cout << "─────────────────────────────────────────────────────────────────────" << std::endl;
+        
+        // CPU Impact
+        if (cpu.getIOWait() > 10) {
+            std::cout << "🔴 CPU IOWait " << std::fixed << std::setprecision(1) << cpu.getIOWait() 
+                      << "% - Storage is bottleneck, CPU waiting for I/O" << std::endl;
+        }
+        if (cpu.getHardIRQ() > 5) {
+            std::cout << "🔴 Hard IRQ " << std::fixed << std::setprecision(1) << cpu.getHardIRQ() 
+                      << "% - Hardware interrupts consuming CPU, limiting I/O throughput" << std::endl;
+        }
+        if (cpu.getSoftIRQ() > 5) {
+            std::cout << "🔴 Soft IRQ " << std::fixed << std::setprecision(1) << cpu.getSoftIRQ() 
+                      << "% - Deferred interrupt processing, may limit scaling" << std::endl;
+        }
+        
+        // Storage Impact
+        if (bottlenecks > 0) {
+            std::cout << "🔴 Storage bottlenecks prevent I/O scaling - " << bottlenecks 
+                      << " devices at 100% queue depth" << std::endl;
+        }
+        if (hot_devices > 3) {
+            std::cout << "🔴 Multiple hot devices may cause thermal throttling and performance degradation" << std::endl;
+        }
+        
+        // Memory Impact
+        if (mem_usage > 90) {
+            std::cout << "🔴 High memory usage may cause swapping, severely impacting I/O performance" << std::endl;
+        }
     }
     
     std::cout << std::endl;
