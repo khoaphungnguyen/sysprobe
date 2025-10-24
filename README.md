@@ -33,7 +33,7 @@ mkdir build
 cd build
 cmake ..
 make
-./tiny_monitor
+./sysprobe
 ```
 
 ## Roadmap
